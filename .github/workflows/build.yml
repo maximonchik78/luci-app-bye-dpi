@@ -103,9 +103,9 @@ jobs:
         
         # Конфигурируем для целевой архитектуры
         cat > .config << EOF
-CONFIG_TARGET_${{ matrix.target }}=y
-CONFIG_PACKAGE_luci-app-bye-dpi=y
-EOF
+        CONFIG_TARGET_${{ matrix.target }}=y
+        CONFIG_PACKAGE_luci-app-bye-dpi=y
+        EOF
         
         make defconfig
         make -j$(nproc) package/network/services/luci-app-bye-dpi/compile V=s
