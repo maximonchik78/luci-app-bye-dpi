@@ -1,0 +1,157 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "ByeDPI Manager"
+msgstr "Менеджер ByeDPI"
+
+msgid "Universal Luci application for managing ByeDPI-OpenWrt"
+msgstr "Универсальное Luci приложение для управления ByeDPI-OpenWrt"
+
+msgid "Status"
+msgstr "Статус"
+
+msgid "Installation"
+msgstr "Установка"
+
+msgid "Install/Update ByeDPI"
+msgstr "Установить/Обновить ByeDPI"
+
+msgid "Install"
+msgstr "Установить"
+
+msgid "Service Control"
+msgstr "Управление сервисом"
+
+msgid "Start"
+msgstr "Запустить"
+
+msgid "Stop"
+msgstr "Остановить"
+
+msgid "Restart"
+msgstr "Перезапустить"
+
+msgid "Strategies"
+msgstr "Стратегии"
+
+msgid "Test Sites"
+msgstr "Сайты для тестирования"
+
+msgid "Sites for strategy testing (comma separated)"
+msgstr "Сайты для тестирования стратегий (через запятую)"
+
+msgid "Auto Strategy Selection"
+msgstr "Автоподбор стратегий"
+
+msgid "Test Strategies"
+msgstr "Тестировать стратегии"
+
+msgid "Custom Strategy"
+msgstr "Пользовательская стратегия"
+
+msgid "Enter custom ByeDPI strategy (e.g., -1 -2 --http-version 1.1)"
+msgstr "Введите пользовательскую стратегию ByeDPI (например, -1 -2 --http-version 1.1)"
+
+msgid "Apply Custom Strategy"
+msgstr "Применить пользовательскую стратегию"
+
+msgid "Apply"
+msgstr "Применить"
+
+msgid "Testing"
+msgstr "Тестирование"
+
+msgid "Test Site"
+msgstr "Тестовый сайт"
+
+msgid "Test specific site access"
+msgstr "Проверить доступ к конкретному сайту"
+
+msgid "Test Site Access"
+msgstr "Проверить доступ к сайту"
+
+msgid "Test"
+msgstr "Проверить"
+
+msgid "Logs"
+msgstr "Логи"
+
+msgid "Log Type"
+msgstr "Тип лога"
+
+msgid "Service Log"
+msgstr "Лог сервиса"
+
+msgid "Installation Log"
+msgstr "Лог установки"
+
+msgid "Strategy Test Log"
+msgstr "Лог тестирования стратегий"
+
+msgid "Lines to Show"
+msgstr "Строк для показа"
+
+msgid "View Log"
+msgstr "Просмотреть лог"
+
+msgid "View"
+msgstr "Просмотреть"
+
+msgid "Clear Logs"
+msgstr "Очистить логи"
+
+msgid "Clear"
+msgstr "Очистить"
+
+msgid "Updates"
+msgstr "Обновления"
+
+msgid "Check for Updates"
+msgstr "Проверить обновления"
+
+msgid "Check"
+msgstr "Проверить"
+
+msgid "ByeDPI уже запущен"
+msgstr "ByeDPI уже запущен"
+
+msgid "ByeDPI успешно запущен"
+msgstr "ByeDPI успешно запущен"
+
+msgid "Не удалось запустить ByeDPI"
+msgstr "Не удалось запустить ByeDPI"
+
+msgid "ByeDPI принудительно остановлен"
+msgstr "ByeDPI принудительно остановлен"
+
+msgid "ByeDPI успешно остановлен"
+msgstr "ByeDPI успешно остановлен"
+
+msgid "ByeDPI не запущен"
+msgstr "ByeDPI не запущен"
+
+msgid "Стратегия не может быть пустой"
+msgstr "Стратегия не может быть пустой"
+
+msgid "Стратегия успешно применена"
+msgstr "Стратегия успешно применена"
+
+msgid "Ошибка при применении стратегии"
+msgstr "Ошибка при применении стратегии"
+
+msgid "Логи очищены"
+msgstr "Логи очищены"
+
+msgid "Лог файл не найден"
+msgstr "Лог файл не найден"
+
+msgid "Доступно обновление"
+msgstr "Доступно обновление"
+
+msgid "У вас актуальная версия"
+msgstr "У вас актуальная версия"
+
+msgid "Не удалось проверить обновления"
+msgstr "Не удалось проверить обновления"
