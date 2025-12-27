@@ -1,25 +1,161 @@
-name: Build LuCI App for ByeDPI
-on: [push, release]
+name: Build LuCI ByeDPI App for OpenWrt 24.x
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - 'LICENSE'
+      - '.gitignore'
+  pull_request:
+    branches: [main]
+  release:
+    types: [published, created]
+
+env:
+  OPENWRT_VERSION: "24.10"
+  OPENWRT_BRANCH: "openwrt-24.10"
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-multiarch:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target: [
+          'x86/64',
+          'x86/generic',
+          'armvirt/64',
+          'mediatek/mt7622',
+          'qualcommax/ipq807x',
+          'rockchip/armv8'
+        ]
     steps:
-      - uses: actions/checkout@v4
-      - name: Prepare OpenWrt SDK
-        run: |
-          git clone https://github.com/openwrt/openwrt.git
-          cd openwrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install luci
-      - name: Build package
-        run: |
-          cp -r luci-app-bye-dpi openwrt/package/
-          cd openwrt
-          make defconfig
-          make package/luci-app-bye-dpi/compile
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: luci-app-bye-dpi
-          path: openwrt/bin/packages/*/luci/luci-app-bye-dpi*.ipk
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
+
+    - name: Setup OpenWrt SDK ${{ env.OPENWRT_VERSION }}
+      run: |
+        # Определяем SDK URL на основе цели
+        case "${{ matrix.target }}" in
+          "x86/64")
+            SDK_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/x86/64/openwrt-sdk-${{ env.OPENWRT_VERSION }}-x86-64_generic.Linux-x86_64.tar.xz"
+            ;;
+          "x86/generic")
+            SDK_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/x86/generic/openwrt-sdk-${{ env.OPENWRT_VERSION }}-x86-generic_generic.Linux-x86_64.tar.xz"
+            ;;
+          "armvirt/64")
+            SDK_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/armvirt/64/openwrt-sdk-${{ env.OPENWRT_VERSION }}-aarch64_generic.Linux-x86_64.tar.xz"
+            ;;
+          "mediatek/mt7622")
+            SDK_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/mediatek/mt7622/openwrt-sdk-${{ env.OPENWRT_VERSION }}-mediatek-mt7622.Linux-x86_64.tar.xz"
+            ;;
+          *)
+            echo "Using default SDK selection"
+            SDK_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/${{ matrix.target }}/openwrt-sdk-${{ env.OPENWRT_VERSION }}-*.Linux-x86_64.tar.xz"
+            ;;
+        esac
+        
+        echo "Downloading SDK from: $SDK_URL"
+        wget --tries=3 --timeout=30 -O openwrt-sdk.tar.xz "$SDK_URL" || echo "SDK download failed, trying alternative"
+        
+        # Альтернативный метод если прямой URL не сработал
+        if [ ! -f "openwrt-sdk.tar.xz" ]; then
+          echo "Trying alternative SDK download method..."
+          wget -qO- "https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/${{ matrix.target }}/sha256sums" | \
+            grep "openwrt-sdk.*\.tar\.xz" | head -1 | awk '{print "https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/${{ matrix.target }}/"$2}' | \
+            xargs wget -O openwrt-sdk.tar.xz
+        fi
+        
+        tar -xf openwrt-sdk.tar.xz
+        mv openwrt-sdk-* openwrt-sdk
+        ls -la openwrt-sdk/
+
+    - name: Prepare package for ${{ matrix.target }}
+      run: |
+        # Копируем наш пакет в дерево SDK
+        mkdir -p openwrt-sdk/package/network/services/luci-app-bye-dpi
+        cp -r luasrc openwrt-sdk/package/network/services/luci-app-bye-dpi/
+        cp -r root openwrt-sdk/package/network/services/luci-app-bye-dpi/
+        cp -r htdocs openwrt-sdk/package/network/services/luci-app-bye-dpi/
+        cp -r po openwrt-sdk/package/network/services/luci-app-bye-dpi/
+        cp Makefile openwrt-sdk/package/network/services/luci-app-bye-dpi/
+        
+        # Обновляем feeds в SDK
+        cd openwrt-sdk
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a -p luci
+        
+        # Конфигурируем только наш пакет
+        cat > .config << 'EOF'
+CONFIG_TARGET_$(echo ${{ matrix.target }} | tr '/' '_')=y
+CONFIG_PACKAGE_luci-app-bye-dpi=y
+CONFIG_PACKAGE_luci-compat=y
+CONFIG_PACKAGE_luci-lib-ipkg=y
+EOF
+        
+        make defconfig
+        echo "Configuration for ${{ matrix.target }}:"
+        cat .config | grep "CONFIG_TARGET\|CONFIG_PACKAGE"
+
+    - name: Build package ${{ matrix.target }}
+      run: |
+        cd openwrt-sdk
+        make -j$(($(nproc) + 1)) package/network/services/luci-app-bye-dpi/compile V=sc 2>&1 | tee build.log
+        
+        # Проверяем успешность сборки
+        if find bin -name "luci-app-bye-dpi*.ipk" 2>/dev/null | grep -q .; then
+          echo "✅ Package built successfully"
+          find bin -name "luci-app-bye-dpi*.ipk" -exec cp {} ../ \;
+        else
+          echo "❌ Build failed"
+          tail -100 build.log
+          exit 1
+        fi
+
+    - name: Upload artifact ${{ matrix.target }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: luci-app-bye-dpi-${{ matrix.target | replace('/', '-') }}
+        path: luci-app-bye-dpi*.ipk
+        retention-days: 7
+
+  release-prepare:
+    runs-on: ubuntu-24.04
+    needs: build-multiarch
+    if: github.event_name == 'release'
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        
+    - name: List and verify artifacts
+      run: |
+        echo "Artifacts structure:"
+        find artifacts -type f -name "*.ipk" | sort
+        echo ""
+        echo "Artifact count:"
+        find artifacts -type f -name "*.ipk" | wc -l
+        
+        # Проверяем контрольные суммы
+        for ipk in artifacts/**/*.ipk; do
+          echo "Checking $ipk"
+          tar -tzf "$ipk" 2>/dev/null | head -5 || echo "Invalid package"
+        done
+
+    - name: Create checksums
+      run: |
+        cd artifacts
+        find . -name "*.ipk" -type f | sort | xargs sha256sum > SHA256SUMS
+        cat SHA256SUMS
+        
+    - name: Upload to release
+      uses: softprops/action-gh-release@v2
+      if: github.event_name == 'release'
+      with:
+        files: |
+          artifacts/**/*.ipk
+          artifacts/SHA256SUMS
+        generate_release_notes: true
