@@ -1,9 +1,9 @@
-name: Build and Release LuCI ByeDPI App
+name: Build LuCI ByeDPI App
 
 on:
   push:
     branches: [ main, master ]
-    tags: [ 'v*', 'v*.*', 'v*.*.*' ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
@@ -17,30 +17,28 @@ on:
           - '24.10'
           - '25.01'
           - 'snapshot'
-      architectures:
-        description: 'Target Architectures'
-        required: true
-        default: 'x86_64,aarch64_generic,arm_cortex-a15_neon-vfpv4'
-        type: string
 
 env:
   OPENWRT_VERSION: ${{ github.event.inputs.version || '24.10' }}
-  BUILD_ARCHS: ${{ github.event.inputs.architectures || 'x86_64,aarch64_generic,arm_cortex-a15_neon-vfpv4' }}
 
 jobs:
-  build-packages:
+  build:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        arch: ${{ fromJSON(format('[{0}]', join(map(split(env.BUILD_ARCHS, ','), 'trim(v)'), ','))) }}
+        target: [
+          'x86_64',
+          'aarch64_generic',
+          'arm_cortex-a15_neon-vfpv4',
+          'mipsel_24kc'
+        ]
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        submodules: false
 
-    - name: Setup OpenWrt build environment
+    - name: Setup build environment
       run: |
         sudo apt-get update
         sudo apt-get install -y \
@@ -56,229 +54,75 @@ jobs:
           wget \
           unzip \
           python3 \
-          python3-distutils \
           python3-setuptools \
           rsync \
           curl \
-          file \
-          quilt
+          file
 
-    - name: Detect OpenWrt SDK for ${{ matrix.arch }}
-      id: sdk-detect
+    - name: Download OpenWrt SDK for ${{ matrix.target }}
       run: |
-        # Определяем базовый URL для SDK
-        SDK_BASE="https://downloads.openwrt.org/releases"
-        VERSION="${{ env.OPENWRT_VERSION }}"
+        SDK_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets"
         
-        if [ "$VERSION" = "snapshot" ]; then
-          SDK_URL="${SDK_BASE}/snapshots/targets"
-        else
-          SDK_URL="${SDK_BASE}/${VERSION}/targets"
-        fi
-        
-        # Определяем подходящий SDK для архитектуры
-        case "${{ matrix.arch }}" in
+        case "${{ matrix.target }}" in
           "x86_64")
-            TARGET_SUBDIR="x86/64"
-            SDK_PATTERN="openwrt-sdk-${VERSION}-x86-64_generic.Linux-x86_64.tar.xz"
+            SDK_PATH="x86/64/openwrt-sdk-${{ env.OPENWRT_VERSION }}-x86-64_generic.Linux-x86_64.tar.xz"
             ;;
           "aarch64_generic")
-            TARGET_SUBDIR="armvirt/64"
-            SDK_PATTERN="openwrt-sdk-${VERSION}-aarch64_generic.Linux-x86_64.tar.xz"
+            SDK_PATH="armvirt/64/openwrt-sdk-${{ env.OPENWRT_VERSION }}-aarch64_generic.Linux-x86_64.tar.xz"
             ;;
           "arm_cortex-a15_neon-vfpv4")
-            TARGET_SUBDIR="armvirt/32"
-            SDK_PATTERN="openwrt-sdk-${VERSION}-arm_cortex-a15_neon-vfpv4.Linux-x86_64.tar.xz"
+            SDK_PATH="armvirt/32/openwrt-sdk-${{ env.OPENWRT_VERSION }}-arm_cortex-a15_neon-vfpv4.Linux-x86_64.tar.xz"
             ;;
           "mipsel_24kc")
-            TARGET_SUBDIR="mipsel/24kc"
-            SDK_PATTERN="openwrt-sdk-${VERSION}-mipsel_24kc.Linux-x86_64.tar.xz"
-            ;;
-          *)
-            echo "Unsupported architecture: ${{ matrix.arch }}"
-            exit 1
+            SDK_PATH="mipsel/24kc/openwrt-sdk-${{ env.OPENWRT_VERSION }}-mipsel_24kc.Linux-x86_64.tar.xz"
             ;;
         esac
         
-        # Получаем фактический URL SDK
-        if [ "$VERSION" = "snapshot" ]; then
-          # Для снапшотов скачиваем sha256sums для определения точного имени файла
-          wget -q "${SDK_URL}/${TARGET_SUBDIR}/sha256sums" -O /tmp/sha256sums
-          SDK_FILE=$(grep "openwrt-sdk.*\.tar\.xz" /tmp/sha256sums | head -1 | awk '{print $2}')
-          SDK_URL_FULL="${SDK_URL}/${TARGET_SUBDIR}/${SDK_FILE}"
-        else
-          SDK_URL_FULL="${SDK_URL}/${TARGET_SUBDIR}/${SDK_PATTERN}"
-        fi
-        
-        echo "SDK URL: ${SDK_URL_FULL}"
-        echo "sdk_url=${SDK_URL_FULL}" >> $GITHUB_OUTPUT
-        echo "target_subdir=${TARGET_SUBDIR}" >> $GITHUB_OUTPUT
-
-    - name: Download OpenWrt SDK
-      run: |
-        echo "Downloading SDK from: ${{ steps.sdk-detect.outputs.sdk_url }}"
-        wget --tries=3 --timeout=30 --show-progress \
-          "${{ steps.sdk-detect.outputs.sdk_url }}" \
-          -O openwrt-sdk.tar.xz
-        
-        if [ $? -ne 0 ]; then
-          echo "Failed to download SDK, trying alternative method..."
-          # Альтернативный метод: скачиваем через redirect
-          wget --tries=3 --timeout=30 \
-            "https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/${{ steps.sdk-detect.outputs.target_subdir }}/" \
-            -O /tmp/index.html 2>/dev/null || true
-          
-          SDK_FILE=$(grep -o 'openwrt-sdk-[^"]*\.tar\.xz' /tmp/index.html | head -1)
-          if [ -n "$SDK_FILE" ]; then
-            wget --tries=3 --timeout=30 \
-              "https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/${{ steps.sdk-detect.outputs.target_subdir }}/$SDK_FILE" \
-              -O openwrt-sdk.tar.xz
-          fi
-        fi
-        
-        if [ ! -f "openwrt-sdk.tar.xz" ]; then
-          echo "❌ Failed to download SDK"
-          exit 1
-        fi
-        
-        # Распаковываем SDK
-        tar -xf openwrt-sdk.tar.xz
+        echo "Downloading SDK: $SDK_URL/$SDK_PATH"
+        wget --tries=3 --timeout=30 "$SDK_URL/$SDK_PATH" -O sdk.tar.xz
+        tar -xf sdk.tar.xz
         mv openwrt-sdk-* openwrt-sdk
-        
-        echo "✅ SDK downloaded and extracted successfully"
-        ls -la openwrt-sdk/
 
-    - name: Prepare package structure
+    - name: Prepare package
       run: |
-        # Создаем директорию пакета в SDK
-        PACKAGE_DIR="openwrt-sdk/package/network/services/luci-app-bye-dpi"
-        mkdir -p "$PACKAGE_DIR"
+        # Создаем директорию пакета
+        mkdir -p openwrt-sdk/package/network/services/luci-app-bye-dpi
         
-        # Копируем исходные файлы с сохранением структуры
-        echo "Copying package files..."
-        
-        # Создаем структуру директорий
-        mkdir -p "$PACKAGE_DIR/luasrc/controller"
-        mkdir -p "$PACKAGE_DIR/luasrc/model/cbi"
-        mkdir -p "$PACKAGE_DIR/root/usr/libexec/luci-byedpi"
-        mkdir -p "$PACKAGE_DIR/root/usr/share/rpcd/acl.d"
-        mkdir -p "$PACKAGE_DIR/htdocs/luci-static/byedpi"
-        mkdir -p "$PACKAGE_DIR/po/ru"
-        
-        # Копируем файлы
-        cp -v luasrc/controller/byedpi.lua "$PACKAGE_DIR/luasrc/controller/"
-        cp -v luasrc/model/cbi/byedpi.lua "$PACKAGE_DIR/luasrc/model/cbi/"
-        cp -v root/usr/libexec/luci-byedpi/install.sh "$PACKAGE_DIR/root/usr/libexec/luci-byedpi/"
-        cp -v root/usr/libexec/luci-byedpi/strategy-test.sh "$PACKAGE_DIR/root/usr/libexec/luci-byedpi/"
-        cp -v root/usr/libexec/luci-byedpi/utils.sh "$PACKAGE_DIR/root/usr/libexec/luci-byedpi/"
-        cp -v root/usr/share/rpcd/acl.d/luci-app-byedpi.json "$PACKAGE_DIR/root/usr/share/rpcd/acl.d/"
-        cp -v htdocs/luci-static/byedpi/style.css "$PACKAGE_DIR/htdocs/luci-static/byedpi/"
-        cp -v po/ru/byedpi.po "$PACKAGE_DIR/po/ru/"
-        cp -v Makefile "$PACKAGE_DIR/"
-        
-        # Создаем файл src/Makefile для OpenWrt пакета
-        cat > "$PACKAGE_DIR/Makefile" << 'EOF'
-include $(TOPDIR)/rules.mk
+        # Копируем файлы в структуру SDK
+        cp -r luasrc openwrt-sdk/package/network/services/luci-app-bye-dpi/
+        cp -r root openwrt-sdk/package/network/services/luci-app-bye-dpi/
+        cp -r htdocs openwrt-sdk/package/network/services/luci-app-bye-dpi/
+        cp -r po openwrt-sdk/package/network/services/luci-app-bye-dpi/
+        cp Makefile openwrt-sdk/package/network/services/luci-app-bye-dpi/
 
-PKG_NAME:=luci-app-bye-dpi
-PKG_VERSION:=1.0.0
-PKG_RELEASE:=$(shell date +%Y%m%d%H%M)
-PKG_MAINTAINER:=Maxim Onchik <maximonchik78@github.com>
-PKG_LICENSE:=MIT
-PKG_LICENSE_FILES:=LICENSE
-
-LUCI_TITLE:=ByeDPI Manager for OpenWrt
-LUCI_DESCRIPTION:=Universal Luci application for managing ByeDPI-OpenWrt with automatic architecture detection and strategy testing.
-LUCI_DEPENDS:=+luci-base +luci-compat +luci-lib-ipkg +wget-ssl +curl +byedpi
-LUCI_PKGARCH:=all
-
-# Include LuCI package definitions
-include $(TOPDIR)/feeds/luci/luci.mk
-
-# call BuildPackage - OpenWrt build system will execute this
-$(eval $(call BuildPackage,$(PKG_NAME)))
-EOF
-        
-        echo "✅ Package structure prepared"
-
-    - name: Build package for ${{ matrix.arch }}
+    - name: Build package for ${{ matrix.target }}
       run: |
         cd openwrt-sdk
-        
-        # Инициализируем feeds
         ./scripts/feeds update -a
         ./scripts/feeds install -a
         
-        # Создаем минимальный .config для сборки только нашего пакета
+        # Конфигурируем для целевой архитектуры
         cat > .config << EOF
-CONFIG_TARGET_${{ matrix.arch }}=y
+CONFIG_TARGET_${{ matrix.target }}=y
 CONFIG_PACKAGE_luci-app-bye-dpi=y
-CONFIG_PACKAGE_luci-base=y
-CONFIG_PACKAGE_luci-compat=y
-CONFIG_PACKAGE_luci-lib-ipkg=y
 EOF
         
-        # Применяем конфигурацию
         make defconfig
+        make -j$(nproc) package/network/services/luci-app-bye-dpi/compile V=s
         
-        # Собираем только наш пакет
-        echo "Building luci-app-bye-dpi for ${{ matrix.arch }}..."
-        make -j$(($(nproc) + 1)) package/network/services/luci-app-bye-dpi/compile V=s 2>&1 | tee build.log
-        
-        # Проверяем результат сборки
-        if find bin -name "luci-app-bye-dpi*.ipk" -type f 2>/dev/null | grep -q .; then
-          echo "✅ Build successful for ${{ matrix.arch }}"
-          BUILT_PACKAGE=$(find bin -name "luci-app-bye-dpi*.ipk" -type f | head -1)
-          echo "Package: $BUILT_PACKAGE"
-          echo "package_path=$BUILT_PACKAGE" >> $GITHUB_OUTPUT
-        else
-          echo "❌ Build failed for ${{ matrix.arch }}"
-          echo "Last 100 lines of build log:"
-          tail -100 build.log
-          exit 1
-        fi
+        # Копируем собранный пакет
+        find bin -name "luci-app-bye-dpi*.ipk" -exec cp {} ../ \;
 
-    - name: Upload built package
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: luci-app-bye-dpi-${{ matrix.arch }}-${{ env.OPENWRT_VERSION }}
-        path: openwrt-sdk/bin/packages/*/luci/luci-app-bye-dpi*.ipk
-        retention-days: 30
-        if-no-files-found: error
+        name: luci-app-bye-dpi-${{ matrix.target }}-${{ env.OPENWRT_VERSION }}
+        path: luci-app-bye-dpi*.ipk
+        retention-days: 7
 
-  create-release:
-    runs-on: ubuntu-24.04
-    needs: build-packages
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: write
-      packages: write
-    steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
       with:
-        path: artifacts
-        pattern: luci-app-bye-dpi-*
-        merge-multiple: true
-
-    - name: Prepare release files
-      run: |
-        echo "Preparing release files..."
-        mkdir -p release
-        
-        # Копируем все IPK файлы в папку release
-        find artifacts -name "*.ipk" -type f -exec cp {} release/ \;
-        
-        # Создаем README для релиза
-        cat > release/README.md << 'EOF'
-# LuCI ByeDPI App Release
-
-## Packages for OpenWrt ${{ env.OPENWRT_VERSION }}
-
-This release contains LuCI application for managing ByeDPI on OpenWrt routers.
-
-### Installation
-
-1. Choose the appropriate package for your router architecture
-2. Upload to your OpenWrt device
-3. Install using opkg:
+        files: luci-app-bye-dpi*.ipk
+        generate_release_notes: true
