@@ -1,0 +1,20 @@
+{
+    "luci-app-byedpi": {
+        "description": "Grant access to ByeDPI management functions",
+        "read": {
+            "ubus": {
+                "luci": ["*"],
+                "file": ["*"],
+                "uci": ["byedpi"]
+            }
+        },
+        "write": {
+            "ubus": {
+                "luci": ["*"],
+                "file": ["*"],
+                "uci": ["byedpi"]
+            },
+            "uci": ["byedpi"]
+        }
+    }
+}
