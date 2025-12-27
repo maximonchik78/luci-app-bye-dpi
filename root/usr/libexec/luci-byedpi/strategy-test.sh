@@ -1,18 +1,13 @@
 #!/bin/sh
-# Автоподбор стратегий ByeDPI
-
 SITES=$(echo "$1" | tr ',' ' ')
 TEST_DIR="/tmp/byedpi_test"
 LOG_FILE="/tmp/byedpi_strategy_test_$(date +%s).log"
-
 mkdir -p "$TEST_DIR"
-
 echo "=== ByeDPI Strategy Testing ===" | tee "$LOG_FILE"
 echo "Test sites: $SITES" | tee -a "$LOG_FILE"
 echo "Start time: $(date)" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 
-# Базовые стратегии
 STRATEGIES=(
     "-1"
     "-2"
@@ -45,24 +40,18 @@ SUCCESSFUL_STRATEGIES=0
 for strategy in "${STRATEGIES[@]}"; do
     echo "Testing: $strategy" | tee -a "$LOG_FILE"
     success_count=0
-    
-    # Проверяем, запущен ли ByeDPI
     if ! pgrep -f "byedpi" >/dev/null 2>&1; then
         echo "  Starting ByeDPI with strategy: $strategy" | tee -a "$LOG_FILE"
         byedpi $strategy > /tmp/byedpi_test.log 2>&1 &
         TEST_PID=$!
         sleep 3
     fi
-    
     for site in $SITES; do
         site=$(echo "$site" | xargs)
         if [ -z "$site" ]; then
             continue
         fi
-        
         echo "  Checking: $site" | tee -a "$LOG_FILE"
-        
-        # Проверка через ByeDPI
         timeout 10 curl -s -I "https://$site" --socks5-hostname 127.0.0.1:1080 >/dev/null 2>&1
         if [ $? -eq 0 ]; then
             success_count=$((success_count + 1))
@@ -70,27 +59,20 @@ for strategy in "${STRATEGIES[@]}"; do
         else
             echo "    ✗ Failed" | tee -a "$LOG_FILE"
         fi
-        
         sleep 1
     done
-    
-    # Останавливаем тестовый процесс
     if [ -n "$TEST_PID" ]; then
         kill $TEST_PID 2>/dev/null
         wait $TEST_PID 2>/dev/null
     fi
-    
-    # Вычисляем процент успеха
     total_sites=$(echo "$SITES" | wc -w)
     if [ "$total_sites" -gt 0 ]; then
         success_percent=$((success_count * 100 / total_sites))
     else
         success_percent=0
     fi
-    
     echo "  Success rate: $success_percent%" | tee -a "$LOG_FILE"
     echo "" | tee -a "$LOG_FILE"
-    
     if [ $success_percent -ge 50 ]; then
         RESULTS="$RESULTS\nStrategy: $strategy - Success: $success_percent%"
         SUCCESSFUL_STRATEGIES=$((SUCCESSFUL_STRATEGIES + 1))
@@ -114,7 +96,6 @@ echo "" | tee -a "$LOG_FILE"
 echo "End time: $(date)" | tee -a "$LOG_FILE"
 echo "Full log: $LOG_FILE" | tee -a "$LOG_FILE"
 
-# Вывод результатов в консоль
 if [ -n "$RESULTS" ]; then
     echo -e "$RESULTS"
 fi
