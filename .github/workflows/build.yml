@@ -3,6 +3,7 @@ name: Build LuCI ByeDPI App
 on:
   push:
     branches: [main, master]
+    tags: ['v*', 'v*.*', 'v*.*.*']
   pull_request:
     branches: [main, master]
   workflow_dispatch:
@@ -15,23 +16,30 @@ on:
         options:
           - '24.10'
           - '25.01'
+      architectures:
+        description: 'Target Architectures'
+        required: false
+        default: 'x86_64,aarch64_generic,arm_cortex-a15_neon-vfpv4,mipsel_24kc'
+        type: string
 
 env:
   OPENWRT_VERSION: ${{ github.event.inputs.version || '24.10' }}
+  BUILD_ARCHS: ${{ github.event.inputs.architectures || 'x86_64,aarch64_generic,arm_cortex-a15_neon-vfpv4,mipsel_24kc' }}
 
 jobs:
-  build:
+  build-packages:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        target: ['x86_64', 'aarch64_generic', 'arm_cortex-a15_neon-vfpv4', 'mipsel_24kc']
+        arch: ${{ fromJSON(format('["{0}"]', join(split(env.BUILD_ARCHS, ','), '","'))) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: false
 
-      - name: Setup build environment
+      - name: Setup OpenWrt build environment
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -52,65 +60,154 @@ jobs:
             curl \
             file
 
-      - name: Download OpenWrt SDK for ${{ matrix.target }}
+      - name: Download OpenWrt SDK for ${{ matrix.arch }}
         run: |
-          SDK_URL="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets"
+          SDK_BASE="https://downloads.openwrt.org/releases"
+          VERSION="${{ env.OPENWRT_VERSION }}"
           
-          case "${{ matrix.target }}" in
+          if [ "$VERSION" = "snapshot" ]; then
+            SDK_URL="${SDK_BASE}/snapshots/targets"
+          else
+            SDK_URL="${SDK_BASE}/${VERSION}/targets"
+          fi
+          
+          case "${{ matrix.arch }}" in
             "x86_64")
-              SDK_PATH="x86/64/openwrt-sdk-${{ env.OPENWRT_VERSION }}-x86-64_generic.Linux-x86_64.tar.xz"
+              TARGET_SUBDIR="x86/64"
+              SDK_PATTERN="openwrt-sdk-${VERSION}-x86-64_generic.Linux-x86_64.tar.xz"
               ;;
             "aarch64_generic")
-              SDK_PATH="armvirt/64/openwrt-sdk-${{ env.OPENWRT_VERSION }}-aarch64_generic.Linux-x86_64.tar.xz"
+              TARGET_SUBDIR="armvirt/64"
+              SDK_PATTERN="openwrt-sdk-${VERSION}-aarch64_generic.Linux-x86_64.tar.xz"
               ;;
             "arm_cortex-a15_neon-vfpv4")
-              SDK_PATH="armvirt/32/openwrt-sdk-${{ env.OPENWRT_VERSION }}-arm_cortex-a15_neon-vfpv4.Linux-x86_64.tar.xz"
+              TARGET_SUBDIR="armvirt/32"
+              SDK_PATTERN="openwrt-sdk-${VERSION}-arm_cortex-a15_neon-vfpv4.Linux-x86_64.tar.xz"
               ;;
             "mipsel_24kc")
-              SDK_PATH="mipsel/24kc/openwrt-sdk-${{ env.OPENWRT_VERSION }}-mipsel_24kc.Linux-x86_64.tar.xz"
+              TARGET_SUBDIR="mipsel/24kc"
+              SDK_PATTERN="openwrt-sdk-${VERSION}-mipsel_24kc.Linux-x86_64.tar.xz"
+              ;;
+            *)
+              echo "Unsupported architecture: ${{ matrix.arch }}"
+              exit 1
               ;;
           esac
           
-          echo "Downloading SDK: $SDK_URL/$SDK_PATH"
-          wget --tries=3 --timeout=30 "$SDK_URL/$SDK_PATH" -O sdk.tar.xz
-          tar -xf sdk.tar.xz
+          if [ "$VERSION" = "snapshot" ]; then
+            wget -q "${SDK_URL}/${TARGET_SUBDIR}/sha256sums" -O /tmp/sha256sums
+            SDK_FILE=$(grep "openwrt-sdk.*\.tar\.xz" /tmp/sha256sums | head -1 | awk '{print $2}')
+            SDK_URL_FULL="${SDK_URL}/${TARGET_SUBDIR}/${SDK_FILE}"
+          else
+            SDK_URL_FULL="${SDK_URL}/${TARGET_SUBDIR}/${SDK_PATTERN}"
+          fi
+          
+          echo "Downloading SDK from: ${SDK_URL_FULL}"
+          wget --tries=3 --timeout=30 --show-progress "${SDK_URL_FULL}" -O openwrt-sdk.tar.xz
+          
+          tar -xf openwrt-sdk.tar.xz
           mv openwrt-sdk-* openwrt-sdk
 
-      - name: Prepare package
+      - name: Prepare package structure
         run: |
-          mkdir -p openwrt-sdk/package/network/services/luci-app-bye-dpi
-          cp -r luasrc openwrt-sdk/package/network/services/luci-app-bye-dpi/
-          cp -r root openwrt-sdk/package/network/services/luci-app-bye-dpi/
-          cp -r htdocs openwrt-sdk/package/network/services/luci-app-bye-dpi/
-          cp -r po openwrt-sdk/package/network/services/luci-app-bye-dpi/
-          cp Makefile openwrt-sdk/package/network/services/luci-app-bye-dpi/
+          PACKAGE_DIR="openwrt-sdk/package/network/services/luci-app-bye-dpi"
+          mkdir -p "$PACKAGE_DIR"
+          
+          mkdir -p "$PACKAGE_DIR/luasrc/controller"
+          mkdir -p "$PACKAGE_DIR/luasrc/model/cbi"
+          mkdir -p "$PACKAGE_DIR/root/usr/libexec/luci-byedpi"
+          mkdir -p "$PACKAGE_DIR/root/usr/share/rpcd/acl.d"
+          mkdir -p "$PACKAGE_DIR/htdocs/luci-static/byedpi"
+          mkdir -p "$PACKAGE_DIR/po/ru"
+          
+          cp -v luasrc/controller/byedpi.lua "$PACKAGE_DIR/luasrc/controller/"
+          cp -v luasrc/model/cbi/byedpi.lua "$PACKAGE_DIR/luasrc/model/cbi/"
+          cp -v root/usr/libexec/luci-byedpi/*.sh "$PACKAGE_DIR/root/usr/libexec/luci-byedpi/"
+          cp -v root/usr/share/rpcd/acl.d/luci-app-byedpi.json "$PACKAGE_DIR/root/usr/share/rpcd/acl.d/"
+          cp -v root/etc/config/byedpi "$PACKAGE_DIR/root/etc/config/"
+          cp -v htdocs/luci-static/byedpi/style.css "$PACKAGE_DIR/htdocs/luci-static/byedpi/"
+          cp -v po/ru/byedpi.po "$PACKAGE_DIR/po/ru/"
+          cp -v Makefile "$PACKAGE_DIR/"
 
-      - name: Build package for ${{ matrix.target }}
+      - name: Build package for ${{ matrix.arch }}
         run: |
           cd openwrt-sdk
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           
-          cat > .config << EOF
-CONFIG_TARGET_${{ matrix.target }}=y
-CONFIG_PACKAGE_luci-app-bye-dpi=y
-EOF
+          cat > .config << 'EOF'
+          CONFIG_TARGET_${{ matrix.arch }}=y
+          CONFIG_PACKAGE_luci-app-bye-dpi=y
+          CONFIG_PACKAGE_luci-base=y
+          CONFIG_PACKAGE_luci-compat=y
+          CONFIG_PACKAGE_luci-lib-ipkg=y
+          EOF
           
           make defconfig
-          make -j$(nproc) package/network/services/luci-app-bye-dpi/compile V=s
+          make -j$(($(nproc) + 1)) package/network/services/luci-app-bye-dpi/compile V=s 2>&1 | tee build.log
           
-          find bin -name "luci-app-bye-dpi*.ipk" -exec cp {} ../ \;
+          if find bin -name "luci-app-bye-dpi*.ipk" -type f 2>/dev/null | grep -q .; then
+            echo "✅ Build successful for ${{ matrix.arch }}"
+            find bin -name "luci-app-bye-dpi*.ipk" -exec cp {} ../ \;
+          else
+            echo "❌ Build failed for ${{ matrix.arch }}"
+            tail -100 build.log
+            exit 1
+          fi
 
-      - name: Upload artifact
+      - name: Upload built package
         uses: actions/upload-artifact@v4
         with:
-          name: luci-app-bye-dpi-${{ matrix.target }}-${{ env.OPENWRT_VERSION }}
-          path: luci-app-bye-dpi*.ipk
-          retention-days: 7
+          name: luci-app-bye-dpi-${{ matrix.arch }}-${{ env.OPENWRT_VERSION }}
+          path: openwrt-sdk/bin/packages/*/luci/luci-app-bye-dpi*.ipk
+          retention-days: 30
+          if-no-files-found: error
 
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
+  create-release:
+    runs-on: ubuntu-24.04
+    needs: build-packages
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: luci-app-bye-dpi-*
+          merge-multiple: true
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -name "*.ipk" -type f -exec cp {} release/ \;
+          
+          cd release
+          sha256sum *.ipk > SHA256SUMS
+          
+          cat > README.md << 'EOF'
+          # LuCI ByeDPI App Release
+          
+          ## Packages for OpenWrt ${{ env.OPENWRT_VERSION }}
+          
+          ### Installation:
+          ```
+          opkg install luci-app-bye-dpi-<architecture>-${{ env.OPENWRT_VERSION }}.ipk
+          ```
+          
+          ### Build date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          EOF
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: luci-app-bye-dpi*.ipk
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }} for OpenWrt ${{ env.OPENWRT_VERSION }}
+          body_path: release/README.md
+          files: |
+            release/*.ipk
+            release/SHA256SUMS
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
