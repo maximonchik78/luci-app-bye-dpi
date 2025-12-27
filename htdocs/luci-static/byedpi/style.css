@@ -1,6 +1,3 @@
-/* ByeDPI Manager Styles */
-
-/* Единый размер кнопок */
 .cbi-button,
 .cbi-button-apply,
 .cbi-button-save,
@@ -15,8 +12,6 @@
     display: inline-block !important;
     box-sizing: border-box !important;
 }
-
-/* Поля ввода */
 .cbi-input-text,
 .cbi-input-select,
 .cbi-input-password {
@@ -24,8 +19,6 @@
     max-width: 400px !important;
     box-sizing: border-box !important;
 }
-
-/* Текстовые области */
 .cbi-input-textarea {
     width: 100% !important;
     max-width: 600px !important;
@@ -33,8 +26,6 @@
     box-sizing: border-box !important;
     font-family: monospace !important;
 }
-
-/* Секции */
 .cbi-section {
     margin-bottom: 20px !important;
     padding: 15px !important;
@@ -42,26 +33,20 @@
     border-radius: 5px !important;
     background: #f9f9f9 !important;
 }
-
 .cbi-section-title {
     font-weight: bold !important;
     font-size: 16px !important;
     margin-bottom: 10px !important;
     color: #333 !important;
 }
-
-/* Таблицы */
 .cbi-section-table {
     width: 100% !important;
     border-collapse: collapse !important;
 }
-
 .cbi-section-table td {
     padding: 8px !important;
     vertical-align: top !important;
 }
-
-/* Статус индикаторы */
 .status-indicator {
     display: inline-block !important;
     width: 12px !important;
@@ -69,20 +54,15 @@
     border-radius: 50% !important;
     margin-right: 5px !important;
 }
-
 .status-running {
     background-color: #4CAF50 !important;
 }
-
 .status-stopped {
     background-color: #F44336 !important;
 }
-
 .status-unknown {
     background-color: #FFC107 !important;
 }
-
-/* Логи */
 .log-output {
     font-family: 'Courier New', monospace !important;
     font-size: 12px !important;
@@ -94,62 +74,49 @@
     max-height: 400px !important;
     white-space: pre-wrap !important;
 }
-
-/* Результаты тестирования */
 .test-results {
     background: #e8f5e9 !important;
     border-left: 4px solid #4CAF50 !important;
     padding: 10px !important;
     margin: 10px 0 !important;
 }
-
 .test-fail {
     background: #ffebee !important;
     border-left: 4px solid #F44336 !important;
 }
-
-/* Уведомления */
 .notification {
     padding: 10px 15px !important;
     margin: 10px 0 !important;
     border-radius: 4px !important;
     font-weight: bold !important;
 }
-
 .notification-success {
     background: #d4edda !important;
     color: #155724 !important;
     border: 1px solid #c3e6cb !important;
 }
-
 .notification-error {
     background: #f8d7da !important;
     color: #721c24 !important;
     border: 1px solid #f5c6cb !important;
 }
-
 .notification-warning {
     background: #fff3cd !important;
     color: #856404 !important;
     border: 1px solid #ffeaa7 !important;
 }
-
-/* Заголовки */
 h3 {
     color: #333 !important;
     border-bottom: 2px solid #4CAF50 !important;
     padding-bottom: 5px !important;
     margin-top: 20px !important;
 }
-
-/* Адаптивность */
 @media (max-width: 768px) {
     .cbi-button {
         min-width: 100px !important;
         padding: 6px 12px !important;
         font-size: 14px !important;
     }
-    
     .cbi-section {
         padding: 10px !important;
     }
