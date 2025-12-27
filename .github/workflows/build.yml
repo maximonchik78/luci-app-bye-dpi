@@ -1,0 +1,25 @@
+name: Build LuCI App for ByeDPI
+on: [push, release]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Prepare OpenWrt SDK
+        run: |
+          git clone https://github.com/openwrt/openwrt.git
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install luci
+      - name: Build package
+        run: |
+          cp -r luci-app-bye-dpi openwrt/package/
+          cd openwrt
+          make defconfig
+          make package/luci-app-bye-dpi/compile
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: luci-app-bye-dpi
+          path: openwrt/bin/packages/*/luci/luci-app-bye-dpi*.ipk
